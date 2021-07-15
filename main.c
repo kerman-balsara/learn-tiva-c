@@ -15,9 +15,9 @@
 //   in both cases, the alarm timer restarts
 // - The alarm time is updated every minute
 // When the alarm goes off:
-// - The red led comes on
+// - The red led comes on; buzzer sounds every second
 // - We go back to DISPLAY_CLOCK state
-// - The alarm can be on for up to 10 seconds or until SW1 is pressed; in both cases the red led is switched off.
+// - The alarm can be on for up to 10 seconds or until SW1 is pressed; in both cases the red led is switched off and the buzzer is off.
 
 // We are using the LM4F, Breadboard (B), passive buzzer (PBZR), servo motor SG90, and the 5V supply from the UNO (the servo requires 5V).
 // LM4F Connections: GND to B(GND), PF2 to PBZR +, PC4 to SG90 signal, USB to PC
