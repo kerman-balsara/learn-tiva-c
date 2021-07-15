@@ -27,6 +27,8 @@
 
 // LM4F components used: Systick, UART0, PF0 (Switch 2), PF1 (Red led), PF2 (PBZR), PF4 (Switch 1), PC4 (SG90), TIMER1 (PBZR), WTIMER0 (SG90) 
 
+// Servo added just for fun.
+
 // In system_TM4C123.c, CLOCK_SETUP = 0; we are using 16MHz clock
 
 #include "stdio.h"
@@ -598,83 +600,6 @@ static void printChar(const char c)
 {
     while ((UART0->FR & (1 << 5)) != 0);
     UART0->DR = c;
-}
-
-//The following steps show how to initialize PWM Generator:
-
-//Enable the clock signal for PWM module by setting its corresponding bit in the SYSCTL->RCGCPWM register, then waiting for PWM clock ready by checking the SYSCTL->PRPWM register
-//Configure the Run-Mode Clock Configuration (SYSCTL->RCC) register to use the PWM divider (USEPWMDIV) and set the divider value (PWMDIV).
-//Disable PWM generator by writing 0 to PWMm->_g_CTL [0]  register
-//Configure the PWM generator:
-//Configure PWM signal by setting its corresponding bit in the PWMm->_g_GENA and/or PWMm->_g_GENB register
-//Set the timer LOAD value to the PWMm->_g_LOAD register
-//Set the pulse width value to the PWMm->_g_CMPA and/or PWMm->_g_CMPB registers
-//Reset PWM timer counter by resetting the PWM registers through the SRPWM register in the System Control Module
-//Enable PWM generator by writing 1 to PWMm->_g_CTL [0]  register
-//Enable PWM output by setting its corresponding bit in the PWMm->ENABLE  register
-//After configure the PWM, then you need to configure the GPIO pins that are connected to the PWM signal. The detailed information about GPIO configuration, please read Lesson 10: GPIO Ports and Configurations.
-
-//Enabled the clock signal to the GPIO Ports (SYSCTL->RCGCGPIO), then checking the ready signal (SYSCTL->PRGPIO)
-//Unlock the port (GPIOn->LOCK). The step is needed only for PC[3:0], PD[7], and PF0 on TM4C123G. The only needing unlocking on the TM4C1294 is PD7. After unlock the port, the appropriate bits of the GPIO Commit register (GPIOn->CR) needs be set.
-//Configure bits in the port control register (GPIOn->PCTL) to select PWM function
-//Configure bits in the Alternate Function Select register (GPIOn->AFSEL)
-//To enable GPIO pins (GPIOn->DEN)
-static void setup_pwm_tivac(void)
-{
-    // We are using PF2 alternate function for PWM, see page 651, 1352 and 1347. The pin name is M1PWM6, pin number is 30. This signal is controlled by module 1 pwm generator 3
-    // Disable clock gating for PWM1 module.
-    SYSCTL->RCGCPWM |= 2;
-
-    // There must be a delay of 3 system clocks after a peripheral module clock is enabled in the RCGC register
-    // before any module registers are accessed. See page 227 (System Control). We check PRPWM.
-    while (1)
-    {
-        if (SYSCTL->PRPWM & (1 << 1))
-            break;
-    }
-
-    GpioEnable(PORT_F);    
-    GPIOF->AFSEL |= (1 << 2);
-    GPIOF->PCTL &= ~0x00000500U; // see page 1352 for value (5 for PF2/M1PWM6) and page 689 for bit position
-                                // (11:8 PMC2 RW - Port Mux Control 2; This field controls the configuration for GPIO Pin 2) 
-    GPIOF->PCTL |= 0x00000500;
-    GPIOF->DEN |= (1 << 2);       // Set PF2 as digital pin
-
-//5. Configure the Run-Mode Clock Configuration (RCC) register in the System Control module
-//to use the PWM divide (USEPWMDIV) and set the divider (PWMDIV) to divide by 2 (000).
-//6. Configure the PWM generator for countdown mode with immediate updates to the parameters.
-//¦ Write the PWM0CTL register with a value of 0x0000.0000.
-//¦ Write the PWM0GENA register with a value of 0x0000.008C.
-//¦ Write the PWM0GENB register with a value of 0x0000.080C.
-//7. Set the period. For a 25-KHz frequency, the period = 1/25,000, or 40 microseconds. The PWM
-//clock source is 10 MHz; the system clock divided by 2. Thus there are 400 clock ticks per period.
-//Use this value to set the PWM0LOAD register. In Count-Down mode, set the LOAD field in the
-//PWM0LOAD register to the requested period minus one.
-//¦ Write the PWM0LOAD register with a value of 0x0000.018F.
-//8. Set the pulse width of the MnPWM0 pin for a 25% duty cycle.
-//¦ Write the PWM0CMPA register with a value of 0x0000.012B.
-//9. Set the pulse width of the MnPWM1 pin for a 75% duty cycle.
-//¦ Write the PWM0CMPB register with a value of 0x0000.0063.
-//10. Start the timers in PWM generator 0.
-//¦ Write the PWM0CTL register with a value of 0x0000.0001.
-//11. Enable PWM outputs.
-//¦ Write the PWMENABLE register with a value of 0x0000.0003.
-
-    // 2. Enable and Setup Clock Divider for PWM Timer
-    SYSCTL->RCC |= (1 << 20);       // RCC[20]=1:USEPWMDIV
-    SYSCTL->RCC &= ~(0x7U << 17);    // RCC[19:17]=000 PWMDIV
-    SYSCTL->RCC |= (0x4 << 17);     // RCC[19:17]=0x4 divider=/32
-    
-    // 3. Disable PWM Generator and Setup the Timer Counting Mode
-    PWM1->_3_CTL = 0x00;            // Disable PWM Generator, and set to count-down mode
-    // 4. Configure LOAD (Period), CMP (Duty), GEN (PWM Mode) values
-    PWM1->_3_LOAD = 3617;          // Setup the period of the PWM signal
-    PWM1->_3_CMPA = 1807;        // Setup the initial duty cycle
-    PWM1->_3_GENA = (0x02 << 6) | (0x03 << 2); // ACTCMPAD=ActLow ACTLOAD=ActHigh
-    // 5. Enable PWM Generator
-    PWM1->_3_CTL |= 0x01;
-    // 6. Enable PWM Output
-//    PWM1->ENABLE = (1 << 6);        // Enable PWM6
 }
 
 // LM4F does not have a PWM module so we are using TIMER1A to generate a PWM signal for the buzzer. 
